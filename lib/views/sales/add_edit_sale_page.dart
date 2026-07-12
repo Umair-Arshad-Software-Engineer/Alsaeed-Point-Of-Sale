@@ -300,7 +300,7 @@ class _AddEditSalePageState extends State<AddEditSalePage> {
     }
   }
 
-// ── Keyboard Shortcut Handlers ──────────────────────────────────────────────
+  // ── Keyboard Shortcut Handlers ──────────────────────────────────────────────
 
   void _handleKeyboardShortcuts(KeyEvent event) {
     if (event is KeyDownEvent) {
@@ -320,11 +320,41 @@ class _AddEditSalePageState extends State<AddEditSalePage> {
           final barcode = _barcodeInputController.text.trim();
           if (barcode.isNotEmpty) {
             _processBarcode(barcode);
+          } else {
+            // If barcode field is empty, move to payment field
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) {
+                FocusScope.of(context).requestFocus(_paymentFocusNode);
+              }
+            });
           }
         }
       }
     }
   }
+  // void _handleKeyboardShortcuts(KeyEvent event) {
+  //   if (event is KeyDownEvent) {
+  //     // Use F2 or Insert key to edit quantity instead of numpadDecimal
+  //     if ((event.logicalKey == LogicalKeyboardKey.f2 ||
+  //         event.logicalKey == LogicalKeyboardKey.insert) &&
+  //         _barcodeFocusNode.hasFocus && _cart.isNotEmpty) {
+  //       setState(() => _selectedRow = _cart.length - 1);
+  //       _editQuantityForSelectedRow();
+  //     }
+  //
+  //     // Enter key handling
+  //     if (event.logicalKey == LogicalKeyboardKey.enter) {
+  //       if (_paymentFocusNode.hasFocus) {
+  //         _saveSale();
+  //       } else if (_barcodeFocusNode.hasFocus) {
+  //         final barcode = _barcodeInputController.text.trim();
+  //         if (barcode.isNotEmpty) {
+  //           _processBarcode(barcode);
+  //         }
+  //       }
+  //     }
+  //   }
+  // }
 
   void _editQuantityForSelectedRow() {
     if (_selectedRow == null || _selectedRow! >= _cart.length) return;
