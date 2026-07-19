@@ -70,6 +70,8 @@ class _AddEditSalePageState extends State<AddEditSalePage> {
   int? _selectedRow;
   bool _isEditingQuantity = false;  // Track if we're editing quantity
   bool _isEditingPayment = false;   // Track if we're editing payment
+  bool _isSaleSaved = false;
+  Sale? _lastSavedSale;
 
   // Focus nodes for navigation
   final FocusNode _barcodeFocusNode = FocusNode();
@@ -305,7 +307,7 @@ class _AddEditSalePageState extends State<AddEditSalePage> {
   void _handleKeyboardShortcuts(KeyEvent event) {
     if (event is KeyDownEvent) {
       // Use F2 or Insert key to edit quantity instead of numpadDecimal
-      if ((event.logicalKey == LogicalKeyboardKey.f2 ||
+      if ((event.logicalKey == LogicalKeyboardKey.numpadDecimal ||
           event.logicalKey == LogicalKeyboardKey.insert) &&
           _barcodeFocusNode.hasFocus && _cart.isNotEmpty) {
         setState(() => _selectedRow = _cart.length - 1);
@@ -315,7 +317,15 @@ class _AddEditSalePageState extends State<AddEditSalePage> {
       // Enter key handling
       if (event.logicalKey == LogicalKeyboardKey.enter) {
         if (_paymentFocusNode.hasFocus) {
-          _saveSale();
+          // First Enter: Save the sale without clearing
+          // _saveSaleWithoutClearing();
+          if (_isSaleSaved && _lastSavedSale != null) {
+            // Dusra Enter — print karo
+            _printLastSavedSale();
+          } else {
+            // Pehla Enter — save karo (bina clear kiye)
+            _saveSaleWithoutClearing();
+          }
         } else if (_barcodeFocusNode.hasFocus) {
           final barcode = _barcodeInputController.text.trim();
           if (barcode.isNotEmpty) {
@@ -332,29 +342,186 @@ class _AddEditSalePageState extends State<AddEditSalePage> {
       }
     }
   }
-  // void _handleKeyboardShortcuts(KeyEvent event) {
-  //   if (event is KeyDownEvent) {
-  //     // Use F2 or Insert key to edit quantity instead of numpadDecimal
-  //     if ((event.logicalKey == LogicalKeyboardKey.f2 ||
-  //         event.logicalKey == LogicalKeyboardKey.insert) &&
-  //         _barcodeFocusNode.hasFocus && _cart.isNotEmpty) {
-  //       setState(() => _selectedRow = _cart.length - 1);
-  //       _editQuantityForSelectedRow();
-  //     }
-  //
-  //     // Enter key handling
-  //     if (event.logicalKey == LogicalKeyboardKey.enter) {
-  //       if (_paymentFocusNode.hasFocus) {
-  //         _saveSale();
-  //       } else if (_barcodeFocusNode.hasFocus) {
-  //         final barcode = _barcodeInputController.text.trim();
-  //         if (barcode.isNotEmpty) {
-  //           _processBarcode(barcode);
-  //         }
-  //       }
-  //     }
-  //   }
-  // }
+
+  Future<void> _saveSaleWithoutClearing() async {
+    if (_cart.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Please add items to the cart'),
+          backgroundColor: _warningColor,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        ),
+      );
+      return;
+    }
+
+    setState(() => _isLoading = true);
+
+    final sc = context.read<SaleController>();
+    final auth = context.read<AuthController>();
+
+    final items = _cart
+        .map((c) => {'product_id': c.product.id, 'quantity': c.quantity})
+        .toList();
+
+    bool ok;
+    if (_isEditing) {
+      ok = await sc.updateSale(
+        id: widget.sale!.id,
+        items: items,
+        customerName: _customerNameController.text.trim(),
+        customerPhone: _customerPhoneController.text.trim(),
+        discount: _discountValue,
+      );
+    } else {
+      ok = await sc.createSale(
+        items: items,
+        customerName: _customerNameController.text.trim(),
+        customerPhone: _customerPhoneController.text.trim(),
+        discount: _discountValue,
+      );
+    }
+
+    setState(() => _isLoading = false);
+    if (!mounted) return;
+
+    if (ok) {
+      final sale = sc.sales.isNotEmpty ? sc.sales.first : null;
+      if (sale != null && !_isEditing) {
+        // Store the sale for printing later
+        _lastSavedSale = sale;
+        _isSaleSaved = true;
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Text('Sale saved! Press Enter to print receipt'),
+              backgroundColor: _successColor,
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              duration: const Duration(seconds: 2),
+            ),
+          );
+
+          // Move focus back to barcode for next action
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) {
+              FocusScope.of(context).requestFocus(_barcodeFocusNode);
+            }
+          });
+        }
+      } else {
+        // Editing existing sale - just show success and exit
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Text('Sale updated successfully'),
+              backgroundColor: _successColor,
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+          );
+          Navigator.pop(context);
+        }
+      }
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Failed to save sale. Please try again.'),
+          backgroundColor: _dangerColor,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        ),
+      );
+    }
+  }
+
+  Future<void> _printLastSavedSale() async {
+    if (_lastSavedSale == null || !_isSaleSaved) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('No sale to print. Please save first.'),
+          backgroundColor: _warningColor,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        ),
+      );
+      return;
+    }
+
+    try {
+      final auth = context.read<AuthController>();
+      await PrintService.printReceipt(
+        sale: _lastSavedSale!,
+        cart: _cart.map((c) => ReceiptItem(
+          productName: c.product.name,
+          productPrice: c.product.saleRate,
+          quantity: c.quantity,
+          taxPercentage: c.product.taxPercentage, // NEW
+        ))
+            .toList(),
+        customerName: _customerNameController.text.trim(),
+        customerPhone: _customerPhoneController.text.trim(),
+        cashierName: auth.currentUser?.name ?? 'Admin',
+        currentUser: auth.currentUser,   // ✅ YE LINE ADD KARO
+        invoiceNo: _lastSavedSale!.id.toString(),
+        fbrInvoiceNumber: _fbrInvoiceController.text.trim(),
+        subtotal: _subtotal,
+        taxAmount: _totalTax,
+        discount: _discountValue,
+        total: _total,
+        amountGiven: _amountGiven,
+      );
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: const [
+                Icon(Icons.print, color: Colors.white, size: 20),
+                SizedBox(width: 8),
+                Text('Receipt printed successfully'),
+              ],
+            ),
+            backgroundColor: _successColor,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+
+        // After printing, clear the cart for new sale
+        _cart.clear();
+        _selectedRow = null;
+        _barcodeInputController.clear();
+        _amountGivenController.text = '0';
+        _discountController.text = '0';
+        _customerNameController.clear();
+        _customerPhoneController.clear();
+        _isSaleSaved = false;
+        _lastSavedSale = null;
+
+        // Focus back on barcode for next sale
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            FocusScope.of(context).requestFocus(_barcodeFocusNode);
+          }
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Print failed: $e'),
+            backgroundColor: _dangerColor,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          ),
+        );
+      }
+    }
+  }
 
   void _editQuantityForSelectedRow() {
     if (_selectedRow == null || _selectedRow! >= _cart.length) return;
@@ -1796,10 +1963,10 @@ class _AddEditSalePageState extends State<AddEditSalePage> {
                   fontWeight: FontWeight.w500,
                 ),
                 onChanged: (_) => setState(() {}),
-                onSubmitted: (value) {
-                  // When Enter is pressed on payment field, save and print
-                  _saveSale();
-                },
+                // onSubmitted: (value) {
+                //   // When Enter is pressed on payment field, save and print
+                //   _saveSale();
+                // },
                 decoration: InputDecoration(
                   isDense: true,
                   contentPadding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
@@ -2028,6 +2195,8 @@ class _AddEditSalePageState extends State<AddEditSalePage> {
                 _tempQuantityController.clear();
                 _isEditingQuantity = false;
                 _isEditingPayment = false;
+                _isSaleSaved = false;  // Reset print state
+                _lastSavedSale = null;  // Reset saved sale
               });
               Navigator.pop(context);
               if (mounted) {
@@ -2111,6 +2280,7 @@ class _AddEditSalePageState extends State<AddEditSalePage> {
   // ════════════════════════════════════════════════════════════════════════════
   //  Save / Print - Automatic print after save without dialog
   // ════════════════════════════════════════════════════════════════════════════
+  // Keep the original _saveSale method but modify it to handle both scenarios
   Future<void> _saveSale() async {
     if (_cart.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -2121,6 +2291,12 @@ class _AddEditSalePageState extends State<AddEditSalePage> {
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
         ),
       );
+      return;
+    }
+
+    // If sale is already saved, just print it
+    if (_isSaleSaved && _lastSavedSale != null) {
+      await _printLastSavedSale();
       return;
     }
 
@@ -2166,11 +2342,13 @@ class _AddEditSalePageState extends State<AddEditSalePage> {
               productName: c.product.name,
               productPrice: c.product.saleRate,
               quantity: c.quantity,
+              taxPercentage: c.product.taxPercentage, // NEW
             ))
                 .toList(),
             customerName: _customerNameController.text.trim(),
             customerPhone: _customerPhoneController.text.trim(),
             cashierName: auth.currentUser?.name ?? 'Admin',
+            currentUser: auth.currentUser,   // ✅ YE LINE ADD KARO
             invoiceNo: sale.id.toString(),
             fbrInvoiceNumber: _fbrInvoiceController.text.trim(),
             subtotal: _subtotal,
@@ -2181,7 +2359,6 @@ class _AddEditSalePageState extends State<AddEditSalePage> {
           );
 
           if (mounted) {
-            // Show success message
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
                 content: Row(
@@ -2199,7 +2376,6 @@ class _AddEditSalePageState extends State<AddEditSalePage> {
             );
 
             // Clear the cart but keep the page open for new sale
-            // This way user can continue with next sale
             _cart.clear();
             _selectedRow = null;
             _barcodeInputController.clear();

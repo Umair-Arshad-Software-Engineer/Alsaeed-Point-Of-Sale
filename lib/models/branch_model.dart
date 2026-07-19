@@ -27,13 +27,17 @@ class Branch {
   factory Branch.fromJson(Map<String, dynamic> json) {
     return Branch(
       id: json['id'],
-      name: json['name'],
-      address: json['address'],
-      phone: json['phone'],
+      name: json['name'] ?? '',
+      address: json['address'] ?? '',        // ✅ safe default
+      phone: json['phone'] ?? '',             // ✅ safe default
       isActive: json['is_active'] ?? true,
-      createdBy: json['created_by'],
-      createdAt: DateTime.parse(json['createdAt']),
-      updatedAt: DateTime.parse(json['updatedAt']),
+      createdBy: json['created_by'] ?? 0,     // ✅ safe default
+      createdAt: json['createdAt'] != null
+          ? DateTime.parse(json['createdAt'])
+          : DateTime.now(),                   // ✅ safe default
+      updatedAt: json['updatedAt'] != null
+          ? DateTime.parse(json['updatedAt'])
+          : DateTime.now(),                   // ✅ safe default
       creator: json['creator'] != null ? User.fromJson(json['creator']) : null,
     );
   }
@@ -51,4 +55,3 @@ class Branch {
     };
   }
 }
-

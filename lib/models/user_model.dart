@@ -1,3 +1,6 @@
+// lib/models/user_model.dart
+import 'branch_model.dart';
+
 class User {
   final int id;
   final String name;
@@ -5,6 +8,7 @@ class User {
   final String role;
   final bool isActive;
   final DateTime createdAt;
+  final Branch? branch; // ✅ single branch, not a list
 
   User({
     required this.id,
@@ -13,23 +17,28 @@ class User {
     required this.role,
     required this.isActive,
     required this.createdAt,
+    this.branch,
   });
 
   factory User.fromJson(Map<String, dynamic> json) {
+    print('🔄 User.fromJson received: $json');
+
+    Branch? branch;
+    if (json['branch'] != null && json['branch'] is Map<String, dynamic>) {
+      branch = Branch.fromJson(json['branch']);
+    }
+
     return User(
       id: json['id'] ?? 0,
       name: json['name'] ?? '',
       email: json['email'] ?? '',
       role: json['role'] ?? 'user',
-      // Handle both bool and int from MySQL
-      isActive: _parseBool(json['is_active']),
-      createdAt: json['created_at'] != null
-          ? DateTime.parse(json['created_at'])
-          : DateTime.now(),
+      isActive: _parseBool(json['is_active'] ?? json['isActive'] ?? true),
+      createdAt: _parseDateTime(json['created_at'] ?? json['createdAt']),
+      branch: branch,
     );
   }
 
-  // Helper function to convert MySQL TINYINT to bool
   static bool _parseBool(dynamic value) {
     if (value == null) return true;
     if (value is bool) return value;
@@ -38,14 +47,26 @@ class User {
     return true;
   }
 
+  static DateTime _parseDateTime(dynamic value) {
+    if (value == null) return DateTime.now();
+    if (value is DateTime) return value;
+    try {
+      return DateTime.parse(value.toString());
+    } catch (e) {
+      print('⚠️ Error parsing date: $value');
+      return DateTime.now();
+    }
+  }
+
   Map<String, dynamic> toJson() {
     return {
       'id': id,
       'name': name,
       'email': email,
       'role': role,
-      'is_active': isActive ? 1 : 0, // Convert bool to int for MySQL
+      'is_active': isActive ? 1 : 0,
       'created_at': createdAt.toIso8601String(),
+      'branch_id': branch?.id,
     };
   }
 

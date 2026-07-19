@@ -5,6 +5,7 @@ import '../utils/constants.dart';
 import '../models/user_model.dart';
 import '../models/product_model.dart';
 import '../models/sale_model.dart';
+import '../models/branch_model.dart';
 
 class ApiService extends ChangeNotifier {
   static ApiService? _instance;
@@ -59,7 +60,8 @@ class ApiService extends ChangeNotifier {
     required String name,
     required String email,
     required String password,
-  }) async {
+  })
+  async {
     try {
       print('📝 Registering user: $email');
       final response = await client.post(
@@ -80,6 +82,8 @@ class ApiService extends ChangeNotifier {
         if (data['token'] != null) {
           setAuthToken(data['token']);
         }
+        // ✅ branch object already comes from backend — no extra fetch needed
+
         return {
           'success': true,
           'data': data,
@@ -102,7 +106,8 @@ class ApiService extends ChangeNotifier {
   Future<Map<String, dynamic>> login({
     required String email,
     required String password,
-  }) async {
+  })
+  async {
     try {
       print('🔐 Logging in user: $email');
       final response = await client.post(
@@ -122,6 +127,8 @@ class ApiService extends ChangeNotifier {
           setAuthToken(data['token']);
           print('✅ Login successful, token stored');
         }
+        // ✅ branch object already comes from backend — no extra fetch needed
+
         return {
           'success': true,
           'data': data,
@@ -154,19 +161,38 @@ class ApiService extends ChangeNotifier {
       print('📥 Get user response status: ${response.statusCode}');
       print('📥 Response body: ${response.body}');
 
-      final data = jsonDecode(response.body);
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
 
-      if (response.statusCode == 200 && data['success'] == true) {
-        print('✅ User fetched successfully');
-        return {
-          'success': true,
-          'user': User.fromJson(data['user'])
-        };
+        if (data['success'] == true) {
+          print('✅ User fetched successfully');
+          if (data['user'] is Map<String, dynamic>) {
+            final userData = data['user'] as Map<String, dynamic>;
+            // ✅ branch object already comes from backend — no extra fetch needed
+
+            return {
+              'success': true,
+              'user': User.fromJson(userData)
+            };
+          } else {
+            print('❌ User data is not a Map: ${data['user']}');
+            return {
+              'success': false,
+              'message': 'Invalid user data format'
+            };
+          }
+        } else {
+          print('❌ Failed to get user: ${data['message']}');
+          return {
+            'success': false,
+            'message': data['message'] ?? 'Failed to get user'
+          };
+        }
       } else {
-        print('❌ Failed to get user: ${data['message']}');
+        print('❌ HTTP error: ${response.statusCode}');
         return {
           'success': false,
-          'message': data['message'] ?? 'Failed to get user'
+          'message': 'Server error: ${response.statusCode}'
         };
       }
     } catch (e) {
@@ -196,47 +222,355 @@ class ApiService extends ChangeNotifier {
     }
   }
 
+  // ==================== BRANCH ENDPOINTS ====================
+
+  Future<Map<String, dynamic>> getAllBranches() async {
+    try {
+      print('🏢 Fetching all branches');
+      final response = await client.get(
+        Uri.parse('${Constants.baseUrl}${Constants.branchesEndpoint}'),
+        headers: _getHeaders(),
+      );
+
+      print('📥 Get branches response status: ${response.statusCode}');
+      final data = jsonDecode(response.body);
+
+      if (response.statusCode == 200 && data['success'] == true) {
+        final List<dynamic> branchesJson = data['branches'] ?? [];
+        final List<Branch> branches = branchesJson
+            .map((json) => Branch.fromJson(json))
+            .toList();
+        print('✅ Fetched ${branches.length} branches');
+        return {
+          'success': true,
+          'branches': branches
+        };
+      } else {
+        print('❌ Failed to get branches: ${data['message']}');
+        return {
+          'success': false,
+          'message': data['message'] ?? 'Failed to get branches'
+        };
+      }
+    } catch (e) {
+      print('❌ Network error getting branches: $e');
+      return {'success': false, 'message': 'Network error: ${e.toString()}'};
+    }
+  }
+
+  Future<Map<String, dynamic>> getBranch(int branchId) async {
+    try {
+      print('🏢 Fetching branch ID: $branchId');
+      final response = await client.get(
+        Uri.parse('${Constants.baseUrl}${Constants.branchesEndpoint}/$branchId'),
+        headers: _getHeaders(),
+      );
+
+      final data = jsonDecode(response.body);
+
+      if (response.statusCode == 200 && data['success'] == true) {
+        return {
+          'success': true,
+          'branch': Branch.fromJson(data['branch'])
+        };
+      } else {
+        return {
+          'success': false,
+          'message': data['message'] ?? 'Failed to get branch'
+        };
+      }
+    } catch (e) {
+      return {'success': false, 'message': 'Network error: ${e.toString()}'};
+    }
+  }
+
+  Future<Map<String, dynamic>> createBranch({
+    required String name,
+    required String address,
+    required String phone,
+  })
+  async {
+    try {
+      print('🏢 Creating branch: $name');
+      final response = await client.post(
+        Uri.parse('${Constants.baseUrl}${Constants.branchesEndpoint}'),
+        headers: _getHeaders(),
+        body: jsonEncode({
+          'name': name,
+          'address': address,
+          'phone': phone,
+        }),
+      );
+
+      final data = jsonDecode(response.body);
+
+      if (response.statusCode == 201) {
+        print('✅ Branch created successfully');
+        return {
+          'success': true,
+          'message': data['message'],
+          'branch': data['branch'] != null ? Branch.fromJson(data['branch']) : null
+        };
+      } else {
+        return {
+          'success': false,
+          'message': data['message'] ?? 'Failed to create branch'
+        };
+      }
+    } catch (e) {
+      return {'success': false, 'message': 'Network error: ${e.toString()}'};
+    }
+  }
+
+  Future<Map<String, dynamic>> updateBranch({
+    required int branchId,
+    required String name,
+    required String address,
+    required String phone,
+    required bool isActive,
+  })
+  async {
+    try {
+      print('✏️ Updating branch ID: $branchId');
+      final response = await client.put(
+        Uri.parse('${Constants.baseUrl}${Constants.branchesEndpoint}/$branchId'),
+        headers: _getHeaders(),
+        body: jsonEncode({
+          'name': name,
+          'address': address,
+          'phone': phone,
+          'is_active': isActive,
+        }),
+      );
+
+      final data = jsonDecode(response.body);
+
+      if (response.statusCode == 200) {
+        print('✅ Branch updated successfully');
+        return {
+          'success': true,
+          'message': data['message']
+        };
+      } else {
+        return {
+          'success': false,
+          'message': data['message'] ?? 'Failed to update branch'
+        };
+      }
+    } catch (e) {
+      return {'success': false, 'message': 'Network error: ${e.toString()}'};
+    }
+  }
+
+  Future<Map<String, dynamic>> deleteBranch(int branchId) async {
+    try {
+      print('🗑️ Deleting branch ID: $branchId');
+      final response = await client.delete(
+        Uri.parse('${Constants.baseUrl}${Constants.branchesEndpoint}/$branchId'),
+        headers: _getHeaders(),
+      );
+
+      final data = jsonDecode(response.body);
+
+      if (response.statusCode == 200) {
+        print('✅ Branch deleted successfully');
+        return {
+          'success': true,
+          'message': data['message']
+        };
+      } else {
+        return {
+          'success': false,
+          'message': data['message'] ?? 'Failed to delete branch'
+        };
+      }
+    } catch (e) {
+      return {'success': false, 'message': 'Network error: ${e.toString()}'};
+    }
+  }
+
+  Future<Map<String, dynamic>> assignUsersToBranch({
+    required int branchId,
+    required List<int> userIds,
+  })
+  async {
+    try {
+      print('👥 Assigning ${userIds.length} users to branch ID: $branchId');
+      final response = await client.post(
+        Uri.parse('${Constants.baseUrl}${Constants.branchesEndpoint}/$branchId/users'),
+        headers: _getHeaders(),
+        body: jsonEncode({
+          'user_ids': userIds,
+        }),
+      );
+
+      final data = jsonDecode(response.body);
+
+      if (response.statusCode == 200) {
+        print('✅ Users assigned successfully');
+        return {
+          'success': true,
+          'message': data['message'] ?? 'Users assigned successfully'
+        };
+      } else {
+        return {
+          'success': false,
+          'message': data['message'] ?? 'Failed to assign users'
+        };
+      }
+    } catch (e) {
+      return {'success': false, 'message': 'Network error: ${e.toString()}'};
+    }
+  }
+
+  Future<Map<String, dynamic>> getBranchUsers(int branchId) async {
+    try {
+      print('👥 Fetching users for branch ID: $branchId');
+      final response = await client.get(
+        Uri.parse('${Constants.baseUrl}${Constants.branchesEndpoint}/$branchId/users'),
+        headers: _getHeaders(),
+      );
+
+      final data = jsonDecode(response.body);
+
+      if (response.statusCode == 200 && data['success'] == true) {
+        final List<dynamic> usersJson = data['users'] ?? [];
+        final List<User> users = usersJson
+            .map((json) => User.fromJson(json))
+            .toList();
+        print('✅ Fetched ${users.length} users for branch');
+        return {
+          'success': true,
+          'users': users
+        };
+      } else {
+        return {
+          'success': false,
+          'message': data['message'] ?? 'Failed to get branch users'
+        };
+      }
+    } catch (e) {
+      return {'success': false, 'message': 'Network error: ${e.toString()}'};
+    }
+  }
+
+
+  // ==================== USER ENDPOINTS (UPDATED) ====================
+
   Future<Map<String, dynamic>> getAllUsers() async {
     try {
       print('📋 Fetching all users');
+      print('🔑 Token: ${_authToken != null ? 'Present' : 'Missing'}');
+
       final response = await client.get(
         Uri.parse('${Constants.baseUrl}${Constants.usersEndpoint}'),
         headers: _getHeaders(),
       );
 
       print('📥 Get users response status: ${response.statusCode}');
-      final data = jsonDecode(response.body);
+      print('📥 Response body: ${response.body}');
 
-      if (response.statusCode == 200 && data['success'] == true) {
-        final List<dynamic> usersJson = data['users'];
-        final List<User> users = usersJson.map((json) => User.fromJson(json)).toList();
-        print('✅ Fetched ${users.length} users');
-        return {
-          'success': true,
-          'users': users
-        };
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        print('📥 Parsed response: $data');
+
+        if (data['success'] == true) {
+          List usersData = [];
+
+          if (data['users'] != null && data['users'] is List) {
+            usersData = data['users'] as List;
+            print('📋 Found users in "users" key: ${usersData.length}');
+          } else if (data['data'] != null && data['data'] is List) {
+            usersData = data['data'] as List;
+            print('📋 Found users in "data" key: ${usersData.length}');
+          } else if (data['user'] != null && data['user'] is List) {
+            usersData = data['user'] as List;
+            print('📋 Found users in "user" key: ${usersData.length}');
+          } else {
+            if (data is List) {
+              usersData = data;
+              print('📋 Response is a list: ${usersData.length}');
+            } else {
+              data.forEach((key, value) {
+                if (value is List) {
+                  usersData = value;
+                  print('📋 Found list in key "$key": ${usersData.length}');
+                }
+              });
+            }
+          }
+
+          if (usersData.isNotEmpty) {
+            final List<User> users = usersData.map((json) {
+              if (json is Map<String, dynamic>) {
+                print('📋 Processing user: ${json['name'] ?? 'Unknown'} (${json['email'] ?? 'No email'})');
+                return User.fromJson(json);
+              } else {
+                print('⚠️ Unexpected user data format: $json');
+                return User(
+                  id: 0,
+                  name: 'Unknown',
+                  email: 'unknown@example.com',
+                  role: 'user',
+                  isActive: true,
+                  createdAt: DateTime.now(),
+                );
+              }
+            }).toList();
+
+            print('✅ Fetched ${users.length} users successfully');
+
+            // ✅ branch already attached by backend — no extra per-user fetch needed
+            return {
+              'success': true,
+              'users': users
+            };
+          } else {
+            print('⚠️ No users found in response');
+            return {
+              'success': true,
+              'users': []
+            };
+          }
+        } else {
+          print('❌ API returned success: false');
+          return {
+            'success': false,
+            'message': data['message'] ?? 'Failed to get users'
+          };
+        }
       } else {
-        print('❌ Failed to get users: ${data['message']}');
+        print('❌ HTTP error: ${response.statusCode}');
+        String errorMessage = 'Failed to get users';
+        try {
+          final data = jsonDecode(response.body);
+          errorMessage = data['message'] ?? errorMessage;
+        } catch (e) {
+          print('⚠️ Could not parse error response: $e');
+        }
         return {
           'success': false,
-          'message': data['message'] ?? 'Failed to get users'
+          'message': errorMessage
         };
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
       print('❌ Network error getting users: $e');
-      return {'success': false, 'message': 'Network error: ${e.toString()}'};
+      print('📋 Stack trace: $stackTrace');
+      return {
+        'success': false,
+        'message': 'Network error: ${e.toString()}'
+      };
     }
   }
-
-// In api_service.dart — update createUser signature and body
 
   Future<Map<String, dynamic>> createUser({
     required String name,
     required String email,
     required String password,
     required String role,
-    List<int>? branchIds, // ✅ Add this
-  }) async {
+    int? branchId, // ✅ single id instead of List<int>? branchIds
+  })
+  async {
     try {
       print('➕ Creating user: $email');
       final response = await client.post(
@@ -247,19 +581,30 @@ class ApiService extends ChangeNotifier {
           'email': email,
           'password': password,
           'role': role,
-          if (branchIds != null) 'branch_ids': branchIds, // ✅ Add this
+          if (branchId != null) 'branch_id': branchId,
         }),
       );
 
       print('📥 Create user response status: ${response.statusCode}');
+      print('📥 Response body: ${response.body}');
+
       final data = jsonDecode(response.body);
 
       if (response.statusCode == 201) {
         print('✅ User created successfully');
-        return {'success': true, 'message': data['message'], 'user': data['user']};
+        // ✅ backend already returns the branch attached — no extra fetch needed
+
+        return {
+          'success': true,
+          'message': data['message'],
+          'user': data['user'] != null ? User.fromJson(data['user']) : null
+        };
       } else {
         print('❌ Failed to create user: ${data['message']}');
-        return {'success': false, 'message': data['message'] ?? 'Failed to create user'};
+        return {
+          'success': false,
+          'message': data['message'] ?? 'Failed to create user'
+        };
       }
     } catch (e) {
       print('❌ Network error creating user: $e');
@@ -267,16 +612,15 @@ class ApiService extends ChangeNotifier {
     }
   }
 
-// In api_service.dart — update updateUser signature and body
-
   Future<Map<String, dynamic>> updateUser({
     required int userId,
     required String name,
     required String email,
     required String role,
     required bool isActive,
-    List<int>? branchIds, // ✅ Add this
-  }) async {
+    int? branchId, // ✅ single id instead of List<int>? branchIds
+  })
+  async {
     try {
       print('✏️ Updating user: $email (ID: $userId)');
       final response = await client.put(
@@ -287,7 +631,7 @@ class ApiService extends ChangeNotifier {
           'email': email,
           'role': role,
           'is_active': isActive,
-          if (branchIds != null) 'branch_ids': branchIds, // ✅ Add this
+          'branch_id': branchId, // send null explicitly to unassign
         }),
       );
 
@@ -296,10 +640,16 @@ class ApiService extends ChangeNotifier {
 
       if (response.statusCode == 200) {
         print('✅ User updated successfully');
-        return {'success': true, 'message': data['message']};
+        return {
+          'success': true,
+          'message': data['message']
+        };
       } else {
         print('❌ Failed to update user: ${data['message']}');
-        return {'success': false, 'message': data['message'] ?? 'Failed to update user'};
+        return {
+          'success': false,
+          'message': data['message'] ?? 'Failed to update user'
+        };
       }
     } catch (e) {
       print('❌ Network error updating user: $e');
@@ -333,6 +683,27 @@ class ApiService extends ChangeNotifier {
       }
     } catch (e) {
       print('❌ Network error deleting user: $e');
+      return {'success': false, 'message': 'Network error: ${e.toString()}'};
+    }
+  }
+
+  Future<Map<String, dynamic>> changeUserPassword({
+    required int userId,
+    required String newPassword,
+  })
+  async {
+    try {
+      final response = await client.put(
+        Uri.parse('${Constants.baseUrl}${Constants.usersEndpoint}/$userId/password'),
+        headers: _getHeaders(),
+        body: jsonEncode({'newPassword': newPassword}),
+      );
+      final data = jsonDecode(response.body);
+      if (response.statusCode == 200) {
+        return {'success': true, 'message': data['message']};
+      }
+      return {'success': false, 'message': data['message'] ?? 'Failed to change password'};
+    } catch (e) {
       return {'success': false, 'message': 'Network error: ${e.toString()}'};
     }
   }
@@ -397,12 +768,12 @@ class ApiService extends ChangeNotifier {
     }
   }
 
-  // Updated createProduct without category
   Future<Map<String, dynamic>> createProduct({
     required String name,
     required double price,
     required String description,
-  }) async {
+  })
+  async {
     try {
       print('➕ Creating product: $name');
       final response = await client.post(
@@ -435,13 +806,13 @@ class ApiService extends ChangeNotifier {
     }
   }
 
-  // Updated updateProduct without category
   Future<Map<String, dynamic>> updateProduct({
     required int productId,
     required String name,
     required double price,
     required String description,
-  }) async {
+  })
+  async {
     try {
       print('✏️ Updating product ID: $productId');
       final response = await client.put(
@@ -564,7 +935,8 @@ class ApiService extends ChangeNotifier {
     required int quantity,
     required String customerName,
     required String customerPhone,
-  }) async {
+  })
+  async {
     try {
       print('💰 Creating new sale');
       final response = await client.post(
@@ -604,7 +976,8 @@ class ApiService extends ChangeNotifier {
     required int quantity,
     required String customerName,
     required String customerPhone,
-  }) async {
+  })
+  async {
     try {
       print('✏️ Updating sale ID: $saleId');
       final response = await client.put(
@@ -667,7 +1040,8 @@ class ApiService extends ChangeNotifier {
   Future<Map<String, dynamic>> getSalesReport({
     DateTime? startDate,
     DateTime? endDate,
-  }) async {
+  })
+  async {
     try {
       print('📊 Fetching sales report');
       String url = '${Constants.salesEndpoint}/report';

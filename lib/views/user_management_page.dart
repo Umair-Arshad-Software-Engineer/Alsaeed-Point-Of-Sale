@@ -4,9 +4,14 @@ import '../controllers/auth_controller.dart';
 import '../models/user_model.dart';
 import 'add_edit_user_page.dart';
 
-class UserManagementPage extends StatelessWidget {
+class UserManagementPage extends StatefulWidget {
   const UserManagementPage({Key? key}) : super(key: key);
 
+  @override
+  State<UserManagementPage> createState() => _UserManagementPageState();
+}
+
+class _UserManagementPageState extends State<UserManagementPage> {
   // ── Brand tokens (mirrors HomePage) ────────────────────────────────────────
   static const _navy = Color(0xFF0F1729);
   static const _navyLight = Color(0xFF1A2744);
@@ -26,16 +31,39 @@ class UserManagementPage extends StatelessWidget {
   static const _textPrimary = Color(0xFF0F172A);
   static const _textSecondary = Color(0xFF64748B);
 
+  bool _isInitialLoad = true;
+
+  @override
+  void initState() {
+    super.initState();
+    // Load users when page initializes
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadUsers();
+    });
+  }
+
+  Future<void> _loadUsers() async {
+    final auth = context.read<AuthController>();
+
+    // Only load if user is super admin
+    if (auth.currentUser?.isSuperAdmin == true) {
+      print('📋 Loading users on page load');
+      await auth.fetchAllUsers();
+      if (mounted) {
+        setState(() {
+          _isInitialLoad = false;
+        });
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: _canvas,
       body: Row(
         children: [
-          // ── Sidebar ────────────────────────────────────────────────────
           _Sidebar(),
-
-          // ── Main content ───────────────────────────────────────────────
           Expanded(
             child: Column(
               children: [
@@ -43,16 +71,79 @@ class UserManagementPage extends StatelessWidget {
                 Expanded(
                   child: Consumer<AuthController>(
                     builder: (context, auth, _) {
-                      if (auth.isLoading) {
-                        return const Center(
-                          child: CircularProgressIndicator(color: _emerald),
+                      // Check if user is super admin
+                      if (auth.currentUser != null && !auth.currentUser!.isSuperAdmin) {
+                        return Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.lock_outline_rounded,
+                                size: 48,
+                                color: _textSecondary,
+                              ),
+                              const SizedBox(height: 16),
+                              const Text(
+                                'Access Denied',
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w700,
+                                  color: _textPrimary,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              const Text(
+                                'Only super admins can manage users',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  color: _textSecondary,
+                                ),
+                              ),
+                              const SizedBox(height: 20),
+                              OutlinedButton(
+                                onPressed: () => Navigator.pop(context),
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: _emerald,
+                                  side: const BorderSide(color: _emerald),
+                                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                ),
+                                child: const Text('Go Back'),
+                              ),
+                            ],
+                          ),
                         );
                       }
+
+                      // Show loading indicator during initial load or when auth is loading
+                      if (_isInitialLoad || auth.isLoading) {
+                        return const Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              CircularProgressIndicator(color: _emerald),
+                              SizedBox(height: 16),
+                              Text(
+                                'Loading users...',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  color: _textSecondary,
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      }
+
+                      // If users list is empty, show empty state with refresh
                       if (auth.allUsers.isEmpty) {
                         return _EmptyState(
                           onRefresh: () => auth.fetchAllUsers(),
                         );
                       }
+
                       return _UserTable(users: auth.allUsers, auth: auth);
                     },
                   ),
@@ -73,7 +164,7 @@ class _Sidebar extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       width: 220,
-      color: UserManagementPage._navy,
+      color: _UserManagementPageState._navy,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -85,7 +176,7 @@ class _Sidebar extends StatelessWidget {
                   width: 32,
                   height: 32,
                   decoration: BoxDecoration(
-                    color: UserManagementPage._emerald,
+                    color: _UserManagementPageState._emerald,
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: const Icon(Icons.point_of_sale,
@@ -160,13 +251,13 @@ class _NavItem extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
       child: Material(
         color: active
-            ? UserManagementPage._navyLight
+            ? _UserManagementPageState._navyLight
             : Colors.transparent,
         borderRadius: BorderRadius.circular(8),
         child: InkWell(
           onTap: onTap,
           borderRadius: BorderRadius.circular(8),
-          hoverColor: UserManagementPage._navyLight,
+          hoverColor: _UserManagementPageState._navyLight,
           child: Padding(
             padding:
             const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
@@ -175,7 +266,7 @@ class _NavItem extends StatelessWidget {
                 Icon(icon,
                     size: 18,
                     color: active
-                        ? UserManagementPage._emerald
+                        ? _UserManagementPageState._emerald
                         : const Color(0xFF94A3B8)),
                 const SizedBox(width: 10),
                 Text(label,
@@ -194,7 +285,7 @@ class _NavItem extends StatelessWidget {
                     width: 4,
                     height: 4,
                     decoration: const BoxDecoration(
-                      color: UserManagementPage._emerald,
+                      color: _UserManagementPageState._emerald,
                       shape: BoxShape.circle,
                     ),
                   ),
@@ -217,9 +308,9 @@ class _TopBar extends StatelessWidget {
       height: 64,
       padding: const EdgeInsets.symmetric(horizontal: 28),
       decoration: const BoxDecoration(
-        color: UserManagementPage._surface,
+        color: _UserManagementPageState._surface,
         border: Border(
-            bottom: BorderSide(color: UserManagementPage._border)),
+            bottom: BorderSide(color: _UserManagementPageState._border)),
       ),
       child: Row(
         children: [
@@ -229,18 +320,18 @@ class _TopBar extends StatelessWidget {
             child: const Text('Dashboard',
                 style: TextStyle(
                     fontSize: 13,
-                    color: UserManagementPage._textSecondary)),
+                    color: _UserManagementPageState._textSecondary)),
           ),
           const Padding(
             padding: EdgeInsets.symmetric(horizontal: 6),
             child: Icon(Icons.chevron_right,
-                size: 14, color: UserManagementPage._textSecondary),
+                size: 14, color: _UserManagementPageState._textSecondary),
           ),
           const Text('Users',
               style: TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w600,
-                  color: UserManagementPage._textPrimary)),
+                  color: _UserManagementPageState._textPrimary)),
           const Spacer(),
           // Refresh
           _TopBarButton(
@@ -263,7 +354,7 @@ class _TopBar extends StatelessWidget {
             label: const Text('Add User',
                 style: TextStyle(fontSize: 13)),
             style: FilledButton.styleFrom(
-              backgroundColor: UserManagementPage._emerald,
+              backgroundColor: _UserManagementPageState._emerald,
               padding: const EdgeInsets.symmetric(
                   horizontal: 16, vertical: 10),
               shape: RoundedRectangleBorder(
@@ -289,12 +380,12 @@ class _TopBarButton extends StatelessWidget {
         width: 36,
         height: 36,
         decoration: BoxDecoration(
-          color: UserManagementPage._canvas,
-          border: Border.all(color: UserManagementPage._border),
+          color: _UserManagementPageState._canvas,
+          border: Border.all(color: _UserManagementPageState._border),
           borderRadius: BorderRadius.circular(8),
         ),
         child: Icon(icon,
-            size: 16, color: UserManagementPage._textSecondary),
+            size: 16, color: _UserManagementPageState._textSecondary),
       ),
     );
   }
@@ -323,7 +414,7 @@ class _UserTable extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(
                     horizontal: 8, vertical: 2),
                 decoration: BoxDecoration(
-                  color: UserManagementPage._emeraldLight,
+                  color: _UserManagementPageState._emeraldLight,
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: Text(
@@ -331,7 +422,7 @@ class _UserTable extends StatelessWidget {
                   style: const TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.w700,
-                    color: UserManagementPage._emerald,
+                    color: _UserManagementPageState._emerald,
                   ),
                 ),
               ),
@@ -341,10 +432,10 @@ class _UserTable extends StatelessWidget {
           Expanded(
             child: Container(
               decoration: BoxDecoration(
-                color: UserManagementPage._surface,
+                color: _UserManagementPageState._surface,
                 borderRadius: BorderRadius.circular(12),
                 border:
-                Border.all(color: UserManagementPage._border),
+                Border.all(color: _UserManagementPageState._border),
               ),
               child: Column(
                 children: [
@@ -353,7 +444,7 @@ class _UserTable extends StatelessWidget {
                     padding: const EdgeInsets.symmetric(
                         horizontal: 20, vertical: 11),
                     decoration: const BoxDecoration(
-                      color: UserManagementPage._canvas,
+                      color: _UserManagementPageState._canvas,
                       borderRadius: BorderRadius.only(
                         topLeft: Radius.circular(11),
                         topRight: Radius.circular(11),
@@ -379,13 +470,13 @@ class _UserTable extends StatelessWidget {
                   ),
                   const Divider(
                       height: 1,
-                      color: UserManagementPage._border),
+                      color: _UserManagementPageState._border),
                   Expanded(
                     child: ListView.separated(
                       itemCount: users.length,
                       separatorBuilder: (_, __) => const Divider(
                           height: 1,
-                          color: UserManagementPage._border),
+                          color: _UserManagementPageState._border),
                       itemBuilder: (context, i) {
                         final user = users[i];
                         final isCurrentUser =
@@ -419,7 +510,7 @@ class _ColHeader extends StatelessWidget {
       style: const TextStyle(
         fontSize: 10.5,
         fontWeight: FontWeight.w700,
-        color: UserManagementPage._textSecondary,
+        color: _UserManagementPageState._textSecondary,
         letterSpacing: 0.6,
       ),
     );
@@ -472,7 +563,7 @@ class _UserRow extends StatelessWidget {
                               style: const TextStyle(
                                 fontSize: 13.5,
                                 fontWeight: FontWeight.w600,
-                                color: UserManagementPage._textPrimary,
+                                color: _UserManagementPageState._textPrimary,
                               )),
                           if (isCurrentUser) ...[
                             const SizedBox(width: 6),
@@ -480,14 +571,14 @@ class _UserRow extends StatelessWidget {
                               padding: const EdgeInsets.symmetric(
                                   horizontal: 6, vertical: 1),
                               decoration: BoxDecoration(
-                                color: UserManagementPage._skyLight,
+                                color: _UserManagementPageState._skyLight,
                                 borderRadius: BorderRadius.circular(4),
                               ),
                               child: const Text('You',
                                   style: TextStyle(
                                     fontSize: 10,
                                     fontWeight: FontWeight.w600,
-                                    color: UserManagementPage._sky,
+                                    color: _UserManagementPageState._sky,
                                   )),
                             ),
                           ],
@@ -496,7 +587,7 @@ class _UserRow extends StatelessWidget {
                       Text(user.email,
                           style: const TextStyle(
                             fontSize: 12,
-                            color: UserManagementPage._textSecondary,
+                            color: _UserManagementPageState._textSecondary,
                           )),
                     ],
                   ),
@@ -533,7 +624,7 @@ class _UserRow extends StatelessWidget {
             child: Text(joinDate,
                 style: const TextStyle(
                   fontSize: 13,
-                  color: UserManagementPage._textSecondary,
+                  color: _UserManagementPageState._textSecondary,
                 )),
           ),
 
@@ -547,8 +638,8 @@ class _UserRow extends StatelessWidget {
                   height: 7,
                   decoration: BoxDecoration(
                     color: user.isActive
-                        ? UserManagementPage._emerald
-                        : UserManagementPage._rose,
+                        ? _UserManagementPageState._emerald
+                        : _UserManagementPageState._rose,
                     shape: BoxShape.circle,
                   ),
                 ),
@@ -559,8 +650,8 @@ class _UserRow extends StatelessWidget {
                     fontSize: 12.5,
                     fontWeight: FontWeight.w500,
                     color: user.isActive
-                        ? UserManagementPage._emerald
-                        : UserManagementPage._rose,
+                        ? _UserManagementPageState._emerald
+                        : _UserManagementPageState._rose,
                   ),
                 ),
               ],
@@ -569,31 +660,174 @@ class _UserRow extends StatelessWidget {
 
           // Actions
           SizedBox(
-            width: 80,
-            child: (!isCurrentUser && user.role != 'super_admin')
-                ? Row(
+            width: 116,
+            child: Row(
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
                 _RowIconButton(
-                  icon: Icons.edit_outlined,
-                  color: UserManagementPage._sky,
-                  tooltip: 'Edit',
-                  onTap: () =>
-                      _showEditDialog(context, auth, user),
+                  icon: Icons.lock_reset_rounded,
+                  color: _UserManagementPageState._violet,
+                  tooltip: 'Change Password',
+                  onTap: () => _showPasswordDialog(context, auth, user),
                 ),
-                const SizedBox(width: 4),
-                _RowIconButton(
-                  icon: Icons.delete_outline_rounded,
-                  color: UserManagementPage._rose,
-                  tooltip: 'Delete',
-                  onTap: () =>
-                      _confirmDelete(context, auth, user),
-                ),
+                if (!isCurrentUser && user.role != 'super_admin') ...[
+                  const SizedBox(width: 4),
+                  _RowIconButton(
+                    icon: Icons.edit_outlined,
+                    color: _UserManagementPageState._sky,
+                    tooltip: 'Edit',
+                    onTap: () => _showEditDialog(context, auth, user),
+                  ),
+                  const SizedBox(width: 4),
+                  _RowIconButton(
+                    icon: Icons.delete_outline_rounded,
+                    color: _UserManagementPageState._rose,
+                    tooltip: 'Delete',
+                    onTap: () => _confirmDelete(context, auth, user),
+                  ),
+                ],
               ],
-            )
-                : const SizedBox.shrink(),
+            ),
           ),
         ],
+      ),
+    );
+  }
+
+  void _showPasswordDialog(BuildContext context, AuthController auth, User user) {
+    final passCtrl = TextEditingController();
+    final confirmCtrl = TextEditingController();
+    bool obscure = true;
+    String? error;
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) => Dialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          child: Container(
+            width: 400,
+            padding: const EdgeInsets.all(28),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      width: 36,
+                      height: 36,
+                      decoration: BoxDecoration(
+                        color: _UserManagementPageState._violetLight,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Icon(Icons.lock_reset_rounded,
+                          size: 18, color: _UserManagementPageState._violet),
+                    ),
+                    const SizedBox(width: 12),
+                    Text('Change Password',
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                          color: _UserManagementPageState._textPrimary,
+                        )),
+                    const Spacer(),
+                    GestureDetector(
+                      onTap: () => Navigator.pop(context),
+                      child: const Icon(Icons.close,
+                          size: 18, color: _UserManagementPageState._textSecondary),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Text('For ${user.name} (${user.email})',
+                    style: const TextStyle(
+                      fontSize: 12.5,
+                      color: _UserManagementPageState._textSecondary,
+                    )),
+                const SizedBox(height: 20),
+
+                _FieldLabel('New Password'),
+                const SizedBox(height: 6),
+                _StyledTextField(
+                  controller: passCtrl,
+                  hint: 'Minimum 6 characters',
+                ),
+                const SizedBox(height: 16),
+
+                _FieldLabel('Confirm Password'),
+                const SizedBox(height: 6),
+                _StyledTextField(
+                  controller: confirmCtrl,
+                  hint: 'Re-enter password',
+                ),
+
+                if (error != null) ...[
+                  const SizedBox(height: 10),
+                  Text(error!,
+                      style: const TextStyle(
+                          fontSize: 12.5, color: _UserManagementPageState._rose)),
+                ],
+
+                const SizedBox(height: 24),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => Navigator.pop(context),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: _UserManagementPageState._textSecondary,
+                          side: const BorderSide(color: _UserManagementPageState._border),
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        ),
+                        child: const Text('Cancel'),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: FilledButton(
+                        onPressed: () async {
+                          if (passCtrl.text.length < 6) {
+                            setState(() => error = 'Password must be at least 6 characters');
+                            return;
+                          }
+                          if (passCtrl.text != confirmCtrl.text) {
+                            setState(() => error = 'Passwords do not match');
+                            return;
+                          }
+                          final ok = await auth.changeUserPassword(
+                            userId: user.id,
+                            newPassword: passCtrl.text,
+                          );
+                          Navigator.pop(context);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(ok
+                                  ? 'Password updated for ${user.name}'
+                                  : (auth.errorMessage ?? 'Failed to update password')),
+                              backgroundColor: ok
+                                  ? _UserManagementPageState._emerald
+                                  : _UserManagementPageState._rose,
+                              behavior: SnackBarBehavior.floating,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                            ),
+                          );
+                        },
+                        style: FilledButton.styleFrom(
+                          backgroundColor: _UserManagementPageState._violet,
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        ),
+                        child: const Text('Update Password'),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -603,18 +837,18 @@ class _UserRow extends StatelessWidget {
       case 'super_admin':
         return _RoleData(
             label: 'Super Admin',
-            color: UserManagementPage._rose,
-            bgColor: UserManagementPage._roseLight);
+            color: _UserManagementPageState._rose,
+            bgColor: _UserManagementPageState._roseLight);
       case 'admin':
         return _RoleData(
             label: 'Admin',
-            color: UserManagementPage._amber,
-            bgColor: UserManagementPage._amberLight);
+            color: _UserManagementPageState._amber,
+            bgColor: _UserManagementPageState._amberLight);
       default:
         return _RoleData(
             label: 'User',
-            color: UserManagementPage._sky,
-            bgColor: UserManagementPage._skyLight);
+            color: _UserManagementPageState._sky,
+            bgColor: _UserManagementPageState._skyLight);
     }
   }
 
@@ -646,26 +880,26 @@ class _UserRow extends StatelessWidget {
                       width: 36,
                       height: 36,
                       decoration: BoxDecoration(
-                        color: UserManagementPage._skyLight,
+                        color: _UserManagementPageState._skyLight,
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: const Icon(Icons.edit_outlined,
                           size: 18,
-                          color: UserManagementPage._sky),
+                          color: _UserManagementPageState._sky),
                     ),
                     const SizedBox(width: 12),
                     const Text('Edit User',
                         style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.w700,
-                          color: UserManagementPage._textPrimary,
+                          color: _UserManagementPageState._textPrimary,
                         )),
                     const Spacer(),
                     GestureDetector(
                       onTap: () => Navigator.pop(context),
                       child: const Icon(Icons.close,
                           size: 18,
-                          color: UserManagementPage._textSecondary),
+                          color: _UserManagementPageState._textSecondary),
                     ),
                   ],
                 ),
@@ -698,9 +932,9 @@ class _UserRow extends StatelessWidget {
                   padding: const EdgeInsets.symmetric(
                       horizontal: 14, vertical: 8),
                   decoration: BoxDecoration(
-                    color: UserManagementPage._canvas,
+                    color: _UserManagementPageState._canvas,
                     border: Border.all(
-                        color: UserManagementPage._border),
+                        color: _UserManagementPageState._border),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Row(
@@ -709,13 +943,13 @@ class _UserRow extends StatelessWidget {
                           style: TextStyle(
                             fontSize: 13.5,
                             fontWeight: FontWeight.w500,
-                            color: UserManagementPage._textPrimary,
+                            color: _UserManagementPageState._textPrimary,
                           )),
                       const Spacer(),
                       Switch(
                         value: isActive,
                         onChanged: (v) => setState(() => isActive = v),
-                        activeColor: UserManagementPage._emerald,
+                        activeColor: _UserManagementPageState._emerald,
                       ),
                     ],
                   ),
@@ -729,9 +963,9 @@ class _UserRow extends StatelessWidget {
                         onPressed: () => Navigator.pop(context),
                         style: OutlinedButton.styleFrom(
                           foregroundColor:
-                          UserManagementPage._textSecondary,
+                          _UserManagementPageState._textSecondary,
                           side: const BorderSide(
-                              color: UserManagementPage._border),
+                              color: _UserManagementPageState._border),
                           padding:
                           const EdgeInsets.symmetric(vertical: 12),
                           shape: RoundedRectangleBorder(
@@ -759,8 +993,8 @@ class _UserRow extends StatelessWidget {
                                   : (auth.errorMessage ??
                                   'Update failed')),
                               backgroundColor: ok
-                                  ? UserManagementPage._emerald
-                                  : UserManagementPage._rose,
+                                  ? _UserManagementPageState._emerald
+                                  : _UserManagementPageState._rose,
                               behavior: SnackBarBehavior.floating,
                               shape: RoundedRectangleBorder(
                                   borderRadius:
@@ -770,7 +1004,7 @@ class _UserRow extends StatelessWidget {
                         },
                         style: FilledButton.styleFrom(
                           backgroundColor:
-                          UserManagementPage._emerald,
+                          _UserManagementPageState._emerald,
                           padding:
                           const EdgeInsets.symmetric(vertical: 12),
                           shape: RoundedRectangleBorder(
@@ -806,25 +1040,25 @@ class _UserRow extends StatelessWidget {
                 width: 44,
                 height: 44,
                 decoration: BoxDecoration(
-                  color: UserManagementPage._roseLight,
+                  color: _UserManagementPageState._roseLight,
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: const Icon(Icons.delete_outline_rounded,
-                    size: 22, color: UserManagementPage._rose),
+                    size: 22, color: _UserManagementPageState._rose),
               ),
               const SizedBox(height: 16),
               const Text('Delete user?',
                   style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w700,
-                    color: UserManagementPage._textPrimary,
+                    color: _UserManagementPageState._textPrimary,
                   )),
               const SizedBox(height: 8),
               Text(
                 '${user.name} will be permanently removed. This cannot be undone.',
                 style: const TextStyle(
                   fontSize: 13.5,
-                  color: UserManagementPage._textSecondary,
+                  color: _UserManagementPageState._textSecondary,
                   height: 1.5,
                 ),
               ),
@@ -836,9 +1070,9 @@ class _UserRow extends StatelessWidget {
                       onPressed: () => Navigator.pop(context),
                       style: OutlinedButton.styleFrom(
                         foregroundColor:
-                        UserManagementPage._textSecondary,
+                        _UserManagementPageState._textSecondary,
                         side: const BorderSide(
-                            color: UserManagementPage._border),
+                            color: _UserManagementPageState._border),
                         padding:
                         const EdgeInsets.symmetric(vertical: 12),
                         shape: RoundedRectangleBorder(
@@ -860,8 +1094,8 @@ class _UserRow extends StatelessWidget {
                                 : (auth.errorMessage ??
                                 'Delete failed')),
                             backgroundColor: ok
-                                ? UserManagementPage._emerald
-                                : UserManagementPage._rose,
+                                ? _UserManagementPageState._emerald
+                                : _UserManagementPageState._rose,
                             behavior: SnackBarBehavior.floating,
                             shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(8)),
@@ -869,7 +1103,7 @@ class _UserRow extends StatelessWidget {
                         );
                       },
                       style: FilledButton.styleFrom(
-                        backgroundColor: UserManagementPage._rose,
+                        backgroundColor: _UserManagementPageState._rose,
                         padding:
                         const EdgeInsets.symmetric(vertical: 12),
                         shape: RoundedRectangleBorder(
@@ -904,26 +1138,26 @@ class _EmptyState extends StatelessWidget {
             width: 60,
             height: 60,
             decoration: BoxDecoration(
-              color: UserManagementPage._canvas,
-              border: Border.all(color: UserManagementPage._border),
+              color: _UserManagementPageState._canvas,
+              border: Border.all(color: _UserManagementPageState._border),
               borderRadius: BorderRadius.circular(14),
             ),
             child: const Icon(Icons.people_outline_rounded,
                 size: 28,
-                color: UserManagementPage._textSecondary),
+                color: _UserManagementPageState._textSecondary),
           ),
           const SizedBox(height: 16),
           const Text('No users found',
               style: TextStyle(
                 fontSize: 15,
                 fontWeight: FontWeight.w600,
-                color: UserManagementPage._textPrimary,
+                color: _UserManagementPageState._textPrimary,
               )),
           const SizedBox(height: 6),
           const Text('Add your first team member to get started.',
               style: TextStyle(
                 fontSize: 13,
-                color: UserManagementPage._textSecondary,
+                color: _UserManagementPageState._textSecondary,
               )),
           const SizedBox(height: 20),
           OutlinedButton.icon(
@@ -932,9 +1166,9 @@ class _EmptyState extends StatelessWidget {
             label:
             const Text('Refresh', style: TextStyle(fontSize: 13)),
             style: OutlinedButton.styleFrom(
-              foregroundColor: UserManagementPage._emerald,
+              foregroundColor: _UserManagementPageState._emerald,
               side: const BorderSide(
-                  color: UserManagementPage._emerald),
+                  color: _UserManagementPageState._emerald),
               padding: const EdgeInsets.symmetric(
                   horizontal: 18, vertical: 10),
               shape: RoundedRectangleBorder(
@@ -960,7 +1194,7 @@ class _SectionLabel extends StatelessWidget {
       style: const TextStyle(
         fontSize: 11,
         fontWeight: FontWeight.w700,
-        color: UserManagementPage._textSecondary,
+        color: _UserManagementPageState._textSecondary,
         letterSpacing: 1.1,
       ),
     );
@@ -977,7 +1211,7 @@ class _FieldLabel extends StatelessWidget {
         style: const TextStyle(
           fontSize: 12.5,
           fontWeight: FontWeight.w600,
-          color: UserManagementPage._textSecondary,
+          color: _UserManagementPageState._textSecondary,
         ));
   }
 }
@@ -996,29 +1230,29 @@ class _StyledTextField extends StatelessWidget {
       controller: controller,
       keyboardType: keyboardType,
       style: const TextStyle(
-          fontSize: 13.5, color: UserManagementPage._textPrimary),
+          fontSize: 13.5, color: _UserManagementPageState._textPrimary),
       decoration: InputDecoration(
         hintText: hint,
         hintStyle: const TextStyle(
-            color: UserManagementPage._textSecondary, fontSize: 13.5),
+            color: _UserManagementPageState._textSecondary, fontSize: 13.5),
         filled: true,
-        fillColor: UserManagementPage._canvas,
+        fillColor: _UserManagementPageState._canvas,
         contentPadding:
         const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(8),
           borderSide:
-          const BorderSide(color: UserManagementPage._border),
+          const BorderSide(color: _UserManagementPageState._border),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(8),
           borderSide:
-          const BorderSide(color: UserManagementPage._border),
+          const BorderSide(color: _UserManagementPageState._border),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(8),
           borderSide: const BorderSide(
-              color: UserManagementPage._emerald, width: 1.5),
+              color: _UserManagementPageState._emerald, width: 1.5),
         ),
       ),
     );
@@ -1041,26 +1275,26 @@ class _StyledDropdown extends StatelessWidget {
       value: value,
       onChanged: onChanged,
       style: const TextStyle(
-          fontSize: 13.5, color: UserManagementPage._textPrimary),
+          fontSize: 13.5, color: _UserManagementPageState._textPrimary),
       decoration: InputDecoration(
         filled: true,
-        fillColor: UserManagementPage._canvas,
+        fillColor: _UserManagementPageState._canvas,
         contentPadding:
         const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(8),
           borderSide:
-          const BorderSide(color: UserManagementPage._border),
+          const BorderSide(color: _UserManagementPageState._border),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(8),
           borderSide:
-          const BorderSide(color: UserManagementPage._border),
+          const BorderSide(color: _UserManagementPageState._border),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(8),
           borderSide: const BorderSide(
-              color: UserManagementPage._emerald, width: 1.5),
+              color: _UserManagementPageState._emerald, width: 1.5),
         ),
       ),
       items: items.map((r) {

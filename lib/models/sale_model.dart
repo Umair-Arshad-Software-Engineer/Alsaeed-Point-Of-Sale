@@ -83,27 +83,30 @@ class Sale {
       soldBy: json['sold_by'] ?? 0,
       soldByName: json['seller']?['name'] ?? 'Unknown',
       saleDate: json['sale_date'] != null
-          ? DateTime.parse(json['sale_date'])
+          ? DateTime.parse(json['sale_date']).toLocal()
           : DateTime.now(),
       createdAt: json['createdAt'] != null
-          ? DateTime.parse(json['createdAt'])
+          ? DateTime.parse(json['createdAt']).toLocal()
           : DateTime.now(),
       updatedAt: json['updatedAt'] != null
-          ? DateTime.parse(json['updatedAt'])
+          ? DateTime.parse(json['updatedAt']).toLocal()
           : DateTime.now(),
       items: itemsJson.map((e) => SaleItem.fromJson(e)).toList(),
     );
   }
 }
 
+// where ReceiptItem is defined (likely also in print_service.dart or a models file)
 class ReceiptItem {
   final String productName;
   final double productPrice;
   final int quantity;
+  final double taxPercentage; // NEW
 
-  const ReceiptItem({
+  ReceiptItem({
     required this.productName,
     required this.productPrice,
     required this.quantity,
+    this.taxPercentage = 0,
   });
 }

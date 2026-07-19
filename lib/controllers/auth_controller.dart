@@ -29,7 +29,8 @@ class AuthController extends ChangeNotifier {
     required String name,
     required String email,
     required String password,
-  }) async {
+  })
+  async {
     _isLoading = true;
     _errorMessage = null;
     notifyListeners();
@@ -73,7 +74,8 @@ class AuthController extends ChangeNotifier {
   Future<bool> login({
     required String email,
     required String password,
-  }) async {
+  })
+  async {
     _isLoading = true;
     _errorMessage = null;
     notifyListeners();
@@ -165,12 +167,30 @@ class AuthController extends ChangeNotifier {
           final result = await _apiService.getCurrentUser();
 
           if (result['success'] == true) {
-            _currentUser = result['user'] as User;
+            // Extract user from response
+            Map<String, dynamic> userData;
+            if (result['user'] is User) {
+              _currentUser = result['user'] as User;
+            } else if (result['user'] is Map) {
+              _currentUser = User.fromJson(result['user'] as Map<String, dynamic>);
+            } else {
+              print('❌ Unexpected user data format');
+              await logout();
+              _isLoading = false;
+              notifyListeners();
+              return;
+            }
+
             print('✅ User loaded: ${_currentUser?.email} (Role: ${_currentUser?.role})');
 
+            // Check if super admin to fetch all users
             if (_currentUser?.isSuperAdmin == true) {
               print('👑 Super admin detected, fetching all users');
               await fetchAllUsers();
+            } else {
+              print('👤 Regular user, skipping user list fetch');
+              // Clear users list for non-super admins
+              _allUsers = [];
             }
           } else {
             print('❌ Failed to get user data: ${result['message']}');
@@ -194,17 +214,35 @@ class AuthController extends ChangeNotifier {
 
   Future<void> fetchAllUsers() async {
     try {
-      print('📋 Fetching all users');
+      print('📋 Fetching all users from AuthController');
       final result = await _apiService.getAllUsers();
+      print('📋 getAllUsers result: $result');
+
       if (result['success'] == true) {
-        _allUsers = result['users'] as List<User>;
-        print('✅ Fetched ${_allUsers.length} users');
-        notifyListeners();
+        // Check if users is a List
+        if (result['users'] != null && result['users'] is List) {
+          // The list should already contain User objects from ApiService
+          final usersList = result['users'] as List;
+
+          // Verify each item is a User object
+          _allUsers = usersList.where((item) => item is User).cast<User>().toList();
+
+          print('✅ Fetched ${_allUsers.length} users successfully');
+        } else {
+          print('⚠️ No users found or invalid format');
+          _allUsers = [];
+        }
       } else {
-        print('❌ Failed to fetch users: ${result['message']}');
+        final errorMsg = result['message'] ?? 'Unknown error';
+        print('❌ Failed to fetch users: $errorMsg');
+        _allUsers = [];
       }
-    } catch (e) {
+      notifyListeners();
+    } catch (e, stackTrace) {
       print('❌ Error fetching users: $e');
+      print('📋 Stack trace: $stackTrace');
+      _allUsers = [];
+      notifyListeners();
     }
   }
 
@@ -213,7 +251,7 @@ class AuthController extends ChangeNotifier {
     required String email,
     required String password,
     required String role,
-    List<int>? branchIds,
+    int? branchId, // ✅ single branch id instead of List<int>? branchIds
   })
   async {
     _isLoading = true;
@@ -227,7 +265,7 @@ class AuthController extends ChangeNotifier {
         email: email,
         password: password,
         role: role,
-        branchIds: branchIds,
+        branchId: branchId,
       );
 
       if (result['success'] == true) {
@@ -258,7 +296,7 @@ class AuthController extends ChangeNotifier {
     required String email,
     required String role,
     required bool isActive,
-    List<int>? branchIds,
+    int? branchId, // ✅ single branch id instead of List<int>? branchIds
   })
   async {
     _isLoading = true;
@@ -273,7 +311,7 @@ class AuthController extends ChangeNotifier {
         email: email,
         role: role,
         isActive: isActive,
-        branchIds: branchIds,
+        branchId: branchId,
       );
 
       if (result['success'] == true) {
@@ -364,4 +402,34 @@ class AuthController extends ChangeNotifier {
     notifyListeners();
     print('✅ All storage cleared');
   }
+
+  Future<bool> changeUserPassword({
+    required int userId,
+    required String newPassword,
+  })
+  async {
+    _isLoading = true;
+    _errorMessage = null;
+    notifyListeners();
+
+    try {
+      final result = await _apiService.changeUserPassword(
+        userId: userId,
+        newPassword: newPassword,
+      );
+      _isLoading = false;
+      if (result['success'] != true) {
+        _errorMessage = result['message'] as String? ?? 'Failed to change password';
+      }
+      notifyListeners();
+      return result['success'] == true;
+    } catch (e) {
+      _errorMessage = 'An error occurred: ${e.toString()}';
+      _isLoading = false;
+      notifyListeners();
+      return false;
+    }
+  }
+
+
 }
